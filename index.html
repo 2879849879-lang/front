@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>中标供应商评分系统</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>中标供应商评分系统</h1>
+
+    <!-- 打分表单 -->
+    <form id="scoreForm">
+      <!-- 基本信息 -->
+      <div class="form-group">
+        <label for="name">* 打分人姓名</label>
+        <input type="text" id="name" required placeholder="请输入您的姓名">
+      </div>
+
+      <div class="form-group">
+        <label for="phone">* 联系电话</label>
+        <input type="tel" id="phone" required placeholder="请输入手机号">
+      </div>
+
+      <div class="form-group">
+        <label for="evaluator">* 所属部门</label>
+        <select id="evaluator" required>
+          <option value="">请选择部门</option>
+          <option value="安全部">安全部</option>
+          <option value="技术部">技术部</option>
+          <option value="工程部">工程部</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="project">* 项目名称</label>
+        <select id="project" required>
+          <option value="">请选择项目</option>
+          <!-- 项目列表由JS动态加载 -->
+        </select>
+      </div>
+
+      <!-- 分包公司打分区域（动态显示） -->
+      <div id="subcontractorScores" class="subcontractor-section" style="display: none;">
+        <h3>分包公司评分（0-100分）</h3>
+        <div id="subcontractorList"></div>
+      </div>
+
+      <!-- 查看打分记录按钮 -->
+      <button type="button" class="view-btn" onclick="viewScores()">查看历史打分记录</button>
+      <button type="submit" class="submit-btn">保存打分结果</button>
+    </form>
+
+    <!-- 历史记录弹窗 -->
+    <div id="scoreModal" class="modal">
+      <div class="modal-content">
+        <span class="close-btn" onclick="closeModal()">&times;</span>
+        <h2>历史打分记录</h2>
+        <div id="scoreRecordsList" class="records-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===================== 1. 项目数据配置（你只需修改这里） =====================
+    const PROJECTS = [
+      {
+        "name": "XX园区建设项目",
+        "subcontractors": [
+          { "name": "XX建筑工程公司" },
+          { "name": "XX设备安装公司" }
+        ]
+      },
+      {
+        "name": "XX道路改造项目",
+        "subcontractors": [
+          { "name": "XX市政工程公司" }
+        ]
+      },
+      // 新增项目示例：
+      // {
+      //   "name": "你的新项目名称",
+      //   "subcontractors": [
+      //     { "name": "分包公司A" },
+      //     { "name": "分包公司B" }
+      //   ]
+      // }
+    ];
+
+    // ===================== 2. 页面初始化 =====================
+    window.onload = function() {
+      loadProjects(); // 加载项目列表
+    };
+
+    // 加载项目列表到下拉框
+    function loadProjects() {
+      const projectSelect = document.getElementById('project');
+      // 清空原有选项
+      projectSelect.innerHTML = '<option value="">请选择项目</option>';
+      // 填充项目数据
+      PROJECTS.forEach(project => {
+        const option = document.createElement('option');
+        option.value = project.name;
+        option.textContent = project.name;
+        projectSelect.appendChild(option);
+      });
+    }
+
+    // ===================== 3. 选择项目后加载分包公司 =====================
+    document.getElementById('project').addEventListener('change', function() {
+      const projectName = this.value;
+      const subcontractorSection = document.getElementById('subcontractorScores');
+      const subcontractorList = document.getElementById('subcontractorList');
+      
+      if (projectName) {
+        // 找到选中的项目
+        const project = PROJECTS.find(p => p.name === projectName);
+        // 清空原有打分项
+        subcontractorList.innerHTML = '';
+        // 生成分包公司打分框
+        project.subcontractors.forEach((sub, index) => {
+          const div = document.createElement('div');
+          div.className = 'score-item';
+          div.innerHTML = `
+            <label>${sub.name}</label>
+            <input type="number" step="0.01" min="0" max="100" 
+                   id="score-${index}" required placeholder="0.00">
+          `;
+          subcontractorList.appendChild(div);
+        });
+        // 显示打分区域
+        subcontractorSection.style.display = 'block';
+      } else {
+        // 隐藏打分区域
+        subcontractorSection.style.display = 'none';
+      }
+    });
+
+    // ===================== 4. 保存打分结果到本地（LocalStorage） =====================
+    document.getElementById('scoreForm').addEventListener('submit', function(e) {
+      e.preventDefault(); // 阻止表单默认提交
+      
+      // 获取表单基础数据
+      const name = document.getElementById('name').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const evaluator = document.getElementById('evaluator').value;
+      const projectName = document.getElementById('project').value;
+      
+      // 验证基础数据
+      if (!name || !phone || !evaluator || !projectName) {
+        alert('请填写完整的基本信息！');
+        return;
+      }
+
+      // 收集分包公司打分
+      const scores = [];
+      const scoreInputs = document.querySelectorAll('[id^="score-"]');
+      const project = PROJECTS.find(p => p.name === projectName);
+      
+      try {
+        scoreInputs.forEach((input, index) => {
+          const scoreValue = parseFloat(input.value);
+          // 验证分数合法性
+          if (isNaN(scoreValue) || scoreValue < 0 || scoreValue > 100) {
+            throw new Error(`"${project.subcontractors[index].name}" 的分数必须是0-100之间的数字！`);
+          }
+          scores.push({
+            subcontractor: project.subcontractors[index].name,
+            score: scoreValue
+          });
+        });
+      } catch (err) {
+        alert(err.message);
+        return;
+      }
+
+      // 组装打分记录
+      const scoreRecord = {
+        id: Date.now(), // 唯一ID（时间戳）
+        name,
+        phone,
+        evaluator,
+        projectName,
+        scores,
+        timestamp: new Date().toLocaleString('zh-CN')
+      };
+
+      // 从LocalStorage读取现有记录
+      const existingScores = JSON.parse(localStorage.getItem('scoreRecords') || '[]');
+      // 添加新记录
+      existingScores.push(scoreRecord);
+      // 保存回LocalStorage
+      localStorage.setItem('scoreRecords', JSON.stringify(existingScores));
+
+      // 提示成功并重置表单
+      alert('打分结果保存成功！（数据保存在当前浏览器本地）');
+      this.reset();
+      document.getElementById('subcontractorScores').style.display = 'none';
+    });
+
+    // ===================== 5. 查看历史打分记录 =====================
+    function viewScores() {
+      const modal = document.getElementById('scoreModal');
+      const recordsList = document.getElementById('scoreRecordsList');
+      // 读取本地记录
+      const existingScores = JSON.parse(localStorage.getItem('scoreRecords') || '[]');
+      
+      if (existingScores.length === 0) {
+        recordsList.innerHTML = '<p class="no-records">暂无打分记录</p>';
+      } else {
+        // 生成记录列表
+        let html = '';
+        existingScores.forEach((record, index) => {
+          html += `
+            <div class="record-item">
+              <h4>记录 ${index + 1}（${record.timestamp}）</h4>
+              <p><strong>打分人：</strong>${record.name}</p>
+              <p><strong>联系电话：</strong>${record.phone}</p>
+              <p><strong>所属部门：</strong>${record.evaluator}</p>
+              <p><strong>项目名称：</strong>${record.projectName}</p>
+              <div class="record-scores">
+                <strong>打分详情：</strong>
+                <ul>
+                  ${record.scores.map(s => `<li>${s.subcontractor}：${s.score}分</li>`).join('')}
+                </ul>
+              </div>
+            </div>
+          `;
+        });
+        recordsList.innerHTML = html;
+      }
+
+      // 显示弹窗
+      modal.style.display = 'block';
+    }
+
+    // ===================== 6. 关闭记录弹窗 =====================
+    function closeModal() {
+      const modal = document.getElementById('scoreModal');
+      modal.style.display = 'none';
+    }
+
+    // ===================== 7. 点击弹窗外部关闭 =====================
+    window.onclick = function(event) {
+      const modal = document.getElementById('scoreModal');
+      if (event.target === modal) {
+        modal.style.display = 'none';
+      }
+    };
+  </script>
+</body>
+</html>
